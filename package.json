@@ -1,0 +1,13 @@
+{
+  "name": "bitcoin-tip-jar",
+  "version": "1.0.0",
+  "description": "A bitcoin tip jar for local improv group using Bitcoin Builder Kit",
+  "main": "index.html",
+  "scripts": {
+    "start": "python3 -m http.server 8000",
+    "dev": "python3 -m http.server 8000"
+  },
+  "keywords": ["bitcoin", "tip-jar", "improv", "bbk"],
+  "author": "Improv Group",
+  "license": "MIT"
+}

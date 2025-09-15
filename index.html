@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Improv Group Bitcoin Tip Jar</title>
+    <link rel="stylesheet" href="styles.css">
+    <script type="module" src="https://unpkg.com/@bitcoin-design-system/bitcoin-builder-kit@latest/dist/bitcoin-builder-kit.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>🎭 Improv Group</h1>
+            <p class="subtitle">Support our performances with Bitcoin!</p>
+        </header>
+
+        <main class="main-content">
+            <div class="tip-jar-card">
+                <div class="tip-amount-section">
+                    <h2>Tip Amount</h2>
+                    <div class="amount-input">
+                        <bitcoin-value 
+                            id="tipAmount" 
+                            value="0.0001" 
+                            unit="BTC"
+                            show-fiat="true"
+                            fiat-currency="USD">
+                        </bitcoin-value>
+                    </div>
+                    <div class="quick-amounts">
+                        <button class="amount-btn" data-amount="0.0001">1,000 sats</button>
+                        <button class="amount-btn" data-amount="0.0005">5,000 sats</button>
+                        <button class="amount-btn" data-amount="0.001">10,000 sats</button>
+                        <button class="amount-btn" data-amount="0.002">20,000 sats</button>
+                    </div>
+                </div>
+
+                <div class="qr-section">
+                    <h3>Scan to Tip</h3>
+                    <div class="qr-container">
+                        <bitcoin-qr 
+                            id="tipQR"
+                            value=""
+                            size="200">
+                        </bitcoin-qr>
+                    </div>
+                    <p class="qr-note">Scan with your Bitcoin wallet</p>
+                </div>
+
+                <div class="address-section">
+                    <h3>Or Copy Address</h3>
+                    <div class="address-container">
+                        <bitcoin-address 
+                            id="tipAddress"
+                            value=""
+                            show-copy="true">
+                        </bitcoin-address>
+                    </div>
+                </div>
+
+                <div class="info-section">
+                    <p class="info-text">
+                        💡 <strong>How it works:</strong> Send Bitcoin to the address above and we'll receive your tip instantly!
+                    </p>
+                    <p class="info-text">
+                        🎭 <strong>Thank you!</strong> Your support helps us keep the laughs coming!
+                    </p>
+                </div>
+            </div>
+
+            <div class="stats-section">
+                <h3>Recent Tips</h3>
+                <div class="stats-grid">
+                    <div class="stat-item">
+                        <span class="stat-label">Total Tips</span>
+                        <bitcoin-value 
+                            id="totalTips" 
+                            value="0" 
+                            unit="BTC"
+                            show-fiat="true"
+                            fiat-currency="USD">
+                        </bitcoin-value>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Tip Count</span>
+                        <span class="stat-value" id="tipCount">0</span>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <footer class="footer">
+            <p>Powered by <a href="https://bitcoinbuilderkit.com" target="_blank">Bitcoin Builder Kit</a></p>
+        </footer>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

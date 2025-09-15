@@ -1,0 +1,278 @@
+/* Bitcoin Tip Jar Styles */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+    min-height: 100vh;
+    color: #333;
+}
+
+.container {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+.header {
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+.header h1 {
+    font-size: 2.5rem;
+    color: #f7931a;
+    margin-bottom: 10px;
+    text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
+}
+
+.subtitle {
+    font-size: 1.2rem;
+    color: #666;
+    font-weight: 300;
+}
+
+.main-content {
+    display: grid;
+    gap: 30px;
+    grid-template-columns: 1fr;
+}
+
+.tip-jar-card {
+    background: white;
+    border-radius: 20px;
+    padding: 30px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+    border: 2px solid #f7931a;
+}
+
+.tip-amount-section {
+    margin-bottom: 30px;
+}
+
+.tip-amount-section h2 {
+    color: #f7931a;
+    margin-bottom: 20px;
+    font-size: 1.5rem;
+}
+
+.amount-input {
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+.quick-amounts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 10px;
+    margin-top: 20px;
+}
+
+.amount-btn {
+    background: #f7931a;
+    color: white;
+    border: none;
+    padding: 12px 16px;
+    border-radius: 10px;
+    cursor: pointer;
+    font-weight: 600;
+    transition: all 0.3s ease;
+    font-size: 0.9rem;
+}
+
+.amount-btn:hover {
+    background: #e8830e;
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(247, 147, 26, 0.3);
+}
+
+.amount-btn.active {
+    background: #e8830e;
+    box-shadow: 0 0 0 3px rgba(247, 147, 26, 0.3);
+}
+
+.qr-section {
+    text-align: center;
+    margin-bottom: 30px;
+    padding: 20px;
+    background: #f8f9fa;
+    border-radius: 15px;
+}
+
+.qr-section h3 {
+    color: #f7931a;
+    margin-bottom: 20px;
+    font-size: 1.3rem;
+}
+
+.qr-container {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 15px;
+}
+
+.qr-note {
+    color: #666;
+    font-size: 0.9rem;
+    font-style: italic;
+}
+
+.address-section {
+    margin-bottom: 30px;
+}
+
+.address-section h3 {
+    color: #f7931a;
+    margin-bottom: 15px;
+    font-size: 1.3rem;
+}
+
+.address-container {
+    background: #f8f9fa;
+    padding: 15px;
+    border-radius: 10px;
+    border: 1px solid #e9ecef;
+}
+
+.info-section {
+    background: #e8f4fd;
+    padding: 20px;
+    border-radius: 15px;
+    border-left: 4px solid #f7931a;
+}
+
+.info-text {
+    margin-bottom: 10px;
+    line-height: 1.6;
+    color: #555;
+}
+
+.info-text:last-child {
+    margin-bottom: 0;
+}
+
+.stats-section {
+    background: white;
+    border-radius: 20px;
+    padding: 25px;
+    box-shadow: 0 5px 20px rgba(0,0,0,0.08);
+    border: 1px solid #e9ecef;
+}
+
+.stats-section h3 {
+    color: #f7931a;
+    margin-bottom: 20px;
+    font-size: 1.3rem;
+    text-align: center;
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 20px;
+}
+
+.stat-item {
+    text-align: center;
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 10px;
+}
+
+.stat-label {
+    display: block;
+    color: #666;
+    font-size: 0.9rem;
+    margin-bottom: 8px;
+    font-weight: 500;
+}
+
+.stat-value {
+    font-size: 1.5rem;
+    font-weight: bold;
+    color: #f7931a;
+}
+
+.footer {
+    text-align: center;
+    margin-top: 40px;
+    padding: 20px;
+    color: #666;
+}
+
+.footer a {
+    color: #f7931a;
+    text-decoration: none;
+    font-weight: 600;
+}
+
+.footer a:hover {
+    text-decoration: underline;
+}
+
+/* Bitcoin Builder Kit component styling */
+bitcoin-value {
+    font-size: 2rem;
+    font-weight: bold;
+    color: #f7931a;
+    display: block;
+}
+
+bitcoin-qr {
+    display: block;
+    margin: 0 auto;
+}
+
+bitcoin-address {
+    font-family: 'Courier New', monospace;
+    font-size: 0.9rem;
+    word-break: break-all;
+    color: #333;
+    display: block;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    .container {
+        padding: 15px;
+    }
+    
+    .header h1 {
+        font-size: 2rem;
+    }
+    
+    .tip-jar-card {
+        padding: 20px;
+    }
+    
+    .quick-amounts {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    
+    .stats-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 480px) {
+    .header h1 {
+        font-size: 1.8rem;
+    }
+    
+    .subtitle {
+        font-size: 1rem;
+    }
+    
+    .quick-amounts {
+        grid-template-columns: 1fr;
+    }
+    
+    .amount-btn {
+        padding: 10px 12px;
+        font-size: 0.8rem;
+    }
+}
