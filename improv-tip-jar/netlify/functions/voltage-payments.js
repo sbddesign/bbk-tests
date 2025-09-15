@@ -1,0 +1,181 @@
+// Netlify serverless function for handling Voltage API requests
+exports.handler = async (event, context) => {
+  // Enable CORS
+  const headers = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+  };
+
+  if (event.httpMethod === 'OPTIONS') {
+    return {
+      statusCode: 200,
+      headers,
+      body: '',
+    };
+  }
+
+  try {
+    const VOLTAGE_API_KEY = process.env.VOLTAGE_API_KEY || process.env.VITE_VOLTAGE_API_KEY;
+    const VOLTAGE_ORG_ID = process.env.VOLTAGE_ORG_ID || process.env.VITE_VOLTAGE_ORG_ID;
+    const VOLTAGE_ENV_ID = process.env.VOLTAGE_ENV_ID || process.env.VITE_VOLTAGE_ENV_ID;
+    const VOLTAGE_WALLET_ID = process.env.VOLTAGE_WALLET_ID || process.env.VITE_VOLTAGE_WALLET_ID;
+
+    if (!VOLTAGE_API_KEY || !VOLTAGE_ORG_ID || !VOLTAGE_ENV_ID) {
+      return {
+        statusCode: 500,
+        headers,
+        body: JSON.stringify({ error: 'Voltage API configuration missing' }),
+      };
+    }
+
+    // Handle GET to fetch payment by ID
+    if (event.httpMethod === 'GET') {
+      const url = new URL(event.rawUrl);
+      const paymentId = url.searchParams.get('id') || url.searchParams.get('paymentId') || undefined;
+
+      if (!paymentId) {
+        return {
+          statusCode: 400,
+          headers,
+          body: JSON.stringify({ error: 'Missing payment id' }),
+        };
+      }
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10_000); // 10s
+      const response = await fetch(
+        `https://voltageapi.com/v1/organizations/${VOLTAGE_ORG_ID}/environments/${VOLTAGE_ENV_ID}/payments/${paymentId}`,
+        {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': VOLTAGE_API_KEY,
+          },
+          signal: controller.signal
+        }
+      );
+      clearTimeout(timeout);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Voltage API Error (GET payment):', { status: response.status, errorText });
+        return {
+          statusCode: response.status,
+          headers,
+          body: JSON.stringify({ 
+            error: `Voltage API Error: ${response.status}`,
+            details: errorText 
+          }),
+        };
+      }
+
+      const payment = await response.json();
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify(payment),
+      };
+    }
+
+    if (event.httpMethod !== 'POST') {
+      return {
+        statusCode: 405,
+        headers,
+        body: JSON.stringify({ error: 'Method not allowed' }),
+      };
+    }
+
+    // Parse request body
+    let paymentRequest;
+    
+    try {
+      paymentRequest = JSON.parse(event.body || '{}');
+    } catch (parseError) {
+      console.error('Failed to parse request body:', parseError);
+      return {
+        statusCode: 400,
+        headers,
+        body: JSON.stringify({ 
+          error: 'Invalid JSON in request body',
+          details: parseError instanceof Error ? parseError.message : 'Unknown parse error'
+        }),
+      };
+    }
+
+    // Override wallet id with server configuration when available
+    if (VOLTAGE_WALLET_ID) {
+      paymentRequest.wallet_id = VOLTAGE_WALLET_ID;
+    }
+
+    // Validate required fields
+    if (!paymentRequest.id || !paymentRequest.payment_kind ||
+        typeof paymentRequest.amount_msats !== 'number' || !paymentRequest.currency ||
+        !paymentRequest.wallet_id) {
+      return {
+        statusCode: 400,
+        headers,
+        body: JSON.stringify({ 
+          error: 'Missing required fields in payment request',
+          details: 'Required fields: id, payment_kind, wallet_id, amount_msats, currency'
+        }),
+      };
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10_000); // 10s
+    const response = await fetch(
+      `https://voltageapi.com/v1/organizations/${VOLTAGE_ORG_ID}/environments/${VOLTAGE_ENV_ID}/payments`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': VOLTAGE_API_KEY,
+          'Idempotency-Key': paymentRequest.id
+        },
+        body: JSON.stringify(paymentRequest),
+        signal: controller.signal
+      }
+    );
+    clearTimeout(timeout);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Voltage API Error:', { status: response.status, errorText });
+      return {
+        statusCode: response.status,
+        headers,
+        body: JSON.stringify({ 
+          error: `Voltage API Error: ${response.status}`,
+          details: errorText 
+        }),
+      };
+    }
+
+    // Payment creation returns 202 with no body
+    if (response.status === 202) {
+      return {
+        statusCode: 202,
+        headers,
+        body: JSON.stringify({ success: true, message: 'Payment request created' }),
+      };
+    }
+
+    const payment = await response.json();
+    return {
+      statusCode: 200,
+      headers,
+      body: JSON.stringify(payment),
+    };
+  } catch (error) {
+    console.error('Payment creation error:', error);
+    return {
+      statusCode: 500,
+      headers,
+      body: JSON.stringify({ 
+        error: 'Failed to create payment',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      }),
+    };
+  }
+};
