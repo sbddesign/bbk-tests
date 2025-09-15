@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Improv Group Bitcoin Tip Jar</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: white;
+        }
+        
+        .container {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 30px;
+            text-align: center;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+        
+        h1 {
+            margin-bottom: 10px;
+            font-size: 2.5em;
+        }
+        
+        .subtitle {
+            font-size: 1.2em;
+            margin-bottom: 30px;
+            opacity: 0.9;
+        }
+        
+        .tip-section {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        
+        button {
+            background: #ff6b6b;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 18px;
+            border-radius: 25px;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin: 10px;
+        }
+        
+        button:hover {
+            background: #ff5252;
+            transform: translateY(-2px);
+        }
+        
+        button:disabled {
+            background: #666;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .qr-container {
+            margin: 20px 0;
+        }
+        
+        .qr-code {
+            max-width: 200px;
+            height: auto;
+            border-radius: 10px;
+            background: white;
+            padding: 10px;
+        }
+        
+        .address {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 15px;
+            border-radius: 10px;
+            margin: 15px 0;
+            word-break: break-all;
+            font-family: monospace;
+            font-size: 14px;
+        }
+        
+        .copy-btn {
+            background: #4ecdc4;
+            padding: 8px 15px;
+            font-size: 14px;
+            margin-top: 10px;
+        }
+        
+        .loading {
+            display: none;
+            margin: 20px 0;
+        }
+        
+        .spinner {
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top: 4px solid white;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .status {
+            background: rgba(0, 0, 0, 0.2);
+            padding: 10px;
+            border-radius: 8px;
+            margin-top: 20px;
+            font-size: 12px;
+        }
+        
+        .comedy-icons {
+            font-size: 2em;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎭 Improv Group Tip Jar</h1>
+        <p class="subtitle">Support our comedy with Bitcoin!</p>
+        
+        <div class="comedy-icons">🎪 🎨 🎬 ⭐</div>
+        
+        <p>Enjoyed the show? Send us a Bitcoin tip to keep the laughs coming!</p>
+        
+        <div class="tip-section">
+            <button id="generateBtn" onclick="generateTipAddress()">
+                Generate New Tip Address
+            </button>
+            
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                <p>Generating secure Bitcoin address...</p>
+            </div>
+            
+            <div id="tipContent" style="display: none;">
+                <div class="qr-container">
+                    <img id="qrCode" class="qr-code" alt="Bitcoin QR Code" />
+                </div>
+                
+                <div class="address" id="address"></div>
+                
+                <button class="copy-btn" onclick="copyAddress()">
+                    Copy Address
+                </button>
+                
+                <p style="margin-top: 20px; font-size: 14px; opacity: 0.8;">
+                    Scan the QR code with your Bitcoin wallet or copy the address above.
+                    Every satoshi helps keep our improv group performing!
+                </p>
+            </div>
+        </div>
+        
+        <div class="status">
+            <p>🔧 Status: <span id="status">Loading...</span></p>
+            <p>🌐 Network: <span id="network">-</span></p>
+        </div>
+    </div>
+
+    <script>
+        let currentAddress = '';
+        
+        async function checkStatus() {
+            try {
+                const response = await fetch('/api/status');
+                const data = await response.json();
+                document.getElementById('status').textContent = data.status;
+                document.getElementById('network').textContent = data.network;
+            } catch (error) {
+                document.getElementById('status').textContent = 'Error';
+                console.error('Status check failed:', error);
+            }
+        }
+        
+        async function generateTipAddress() {
+            const btn = document.getElementById('generateBtn');
+            const loading = document.getElementById('loading');
+            const content = document.getElementById('tipContent');
+            
+            btn.disabled = true;
+            loading.style.display = 'block';
+            content.style.display = 'none';
+            
+            try {
+                const response = await fetch('/api/new-address');
+                const data = await response.json();
+                
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+                
+                currentAddress = data.address;
+                document.getElementById('address').textContent = data.address;
+                document.getElementById('qrCode').src = data.qrCode;
+                
+                loading.style.display = 'none';
+                content.style.display = 'block';
+                
+            } catch (error) {
+                console.error('Error generating address:', error);
+                alert('Failed to generate Bitcoin address. Please try again.');
+                loading.style.display = 'none';
+            } finally {
+                btn.disabled = false;
+            }
+        }
+        
+        function copyAddress() {
+            navigator.clipboard.writeText(currentAddress).then(() => {
+                const btn = event.target;
+                const originalText = btn.textContent;
+                btn.textContent = 'Copied!';
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                }, 2000);
+            }).catch(err => {
+                console.error('Failed to copy address:', err);
+                alert('Failed to copy address');
+            });
+        }
+        
+        // Check status on load
+        checkStatus();
+    </script>
+</body>
+</html>
