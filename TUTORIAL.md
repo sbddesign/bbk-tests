@@ -22,7 +22,9 @@ npm create vite@latest btc-tip-jar -- --template react-ts && pnpm i
 
 Run `pnpm dev`. You should find a web page at http://localhost:5173 that says "Vite + React" in the heading. If so, step 1 is complete.
 
-## Step 2: Scaffold UI
+## Step 2: Scaffold UI for landing page
+
+Install TailwindCSS and Bitcoin Builder Kit.
 
 ```bash
 pnpm add tailwindcss @tailwindcss/vite @sbddesign/bui-ui @sbddesign/bui-tokens @sbddesign/bui-icons
