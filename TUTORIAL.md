@@ -95,9 +95,13 @@ Create `netlify.toml`:
   targetPort = 5173
 ```
 
+### Check your step 3 work
+
+If the netlify.toml file exists and contains the above text, then step 3 is complete.
+
 ## Step 4: Build the UI with Bitcoin Builder Kit
 
-Create `src/App.tsx`:
+Open `src/App.tsx` and repalce it's contents with this code block:
 ```typescript
 import { useState, useEffect } from 'react'
 import { 
