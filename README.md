@@ -1,3 +1,15 @@
+# Experiment Notes
+
+**Agent:** Cursor Agent, Auto
+
+**Prompt:** I would like to create a bitcoin tip jar for a small local improv group. Please build it according to the instructions in @TUTORIAL.md, accept modify the text for the improv group.
+
+**Context:** TUTORIAL.md
+
+The agent worked for a while. The result after the first pass does not appear to function and looks pretty janky. Eyeballing the file structure, it appears to ahve replicated some of the files from the instructions. It didn install @sbddesign-bui and it is using the BuiAmountOptionTile in the app. Was the documentation flawed, or did the auto Cursor Agent get confused while going through the docs?
+
+---
+
 # Improv Comedy Bitcoin Tip Jar
 
 A Bitcoin Lightning Network tip jar for local improv comedy groups, built with Vite, TypeScript, React, and the Bitcoin Builder Kit UI components.
