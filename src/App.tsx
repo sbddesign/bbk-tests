@@ -1,11 +1,18 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { 
   BuiAmountOptionTileReact as BuiAmountOptionTile,
-  BuiButtonReact as BuiButton
+  BuiButtonReact as BuiButton,
+  BuiNumpadReact as BuiNumpad
 } from '@sbddesign/bui-ui/react'
 import '@sbddesign/bui-ui/tokens.css'
 import { Recipient } from './components/Recipient'
-import { getCurrentBtcPrice, PriceApiError } from './services/priceApi'
+import { getCurrentBtcPrice, PriceApiError, convertUsdToSats } from './services/priceApi'
+
+// Type definition for NumPadClickDetail
+interface NumPadClickDetail {
+  number: string;
+  content: 'number' | 'icon';
+}
 
 // Type definition for tip options
 interface TipOption {
@@ -45,11 +52,149 @@ const baseTipOptions = [
   }
 ]
 
+// Custom Amount Modal component
+function CustomAmountModal({ 
+  isOpen, 
+  onClose, 
+  onConfirm, 
+  currentAmount,
+  onAmountChange
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  onConfirm: (amount: number) => void;
+  currentAmount: string;
+  onAmountChange: (amount: string) => void;
+}) {
+  const numpadRef = useRef<HTMLElement>(null);
+  const [btcPrice, setBtcPrice] = useState<number | null>(null);
+  const [isLoadingPrice, setIsLoadingPrice] = useState(false);
+  
+  // Load Bitcoin price when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      loadBtcPrice();
+    }
+  }, [isOpen]);
+
+  const loadBtcPrice = async () => {
+    try {
+      setIsLoadingPrice(true);
+      const price = await getCurrentBtcPrice();
+      setBtcPrice(price);
+    } catch (error) {
+      console.error('Failed to load BTC price for modal:', error);
+      // Use fallback price
+      setBtcPrice(97250);
+    } finally {
+      setIsLoadingPrice(false);
+    }
+  };
+  
+  // Event listener for numpad-click events
+  useEffect(() => {
+    const numpadElement = numpadRef.current;
+    if (!numpadElement || !isOpen) return;
+
+    const handleNumpadClick = (event: CustomEvent<NumPadClickDetail>) => {
+      console.log('NumPad click detected:', event.detail);
+      
+      const { number, content } = event.detail;
+      
+              if (content === 'icon') {
+          // Handle backspace
+          onAmountChange(currentAmount.slice(0, -1) || '0');
+        } else {
+          // Handle number input
+          if (number === '.' && currentAmount.includes('.')) return; // Prevent multiple decimal points
+          if (currentAmount === '0' && number !== '.') {
+            onAmountChange(number);
+          } else {
+            onAmountChange(currentAmount + number);
+          }
+        }
+    };
+
+    // Add event listener for the custom numpad-click event
+    numpadElement.addEventListener('numpad-click', handleNumpadClick as EventListener);
+
+    // Cleanup function to remove event listener
+    return () => {
+      numpadElement.removeEventListener('numpad-click', handleNumpadClick as EventListener);
+    };
+  }, [isOpen, currentAmount]);
+  
+  const handleConfirm = () => {
+    const numAmount = parseFloat(currentAmount);
+    if (numAmount > 0) {
+      onConfirm(numAmount);
+    }
+  };
+  
+  const isAmountValid = parseFloat(currentAmount) > 0;
+  
+  // Calculate satoshis using real-time price
+  const amount = parseFloat(currentAmount);
+  let satoshis = 0;
+  
+  if (btcPrice && amount > 0 && !isNaN(amount) && !isNaN(btcPrice)) {
+    satoshis = Math.round((amount / btcPrice) * 100_000_000);
+  }
+  
+  if (!isOpen) return null;
+  
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-6 lg:p-12">
+      <div className="bg-[var(--background)] rounded-[24px] flex flex-col lg:flex-row w-full max-w-6xl gap-6 p-6 lg:p-12 max-md:h-full overflow-x-hidden overflow-y-auto">
+        <div className="lg:basis-3/5 lg:w-3/5">
+          <h2 className="text-2xl lg:text-4xl text-center mb-6">Choose custom amount</h2>
+                     <BuiAmountOptionTile
+             showMessage={false}
+             showEmoji={false}
+             primaryAmount={parseFloat(currentAmount) || 0}
+             secondaryAmount={isLoadingPrice ? 0 : satoshis}
+             showSecondaryCurrency={true}
+             secondarySymbol={'₿'}
+             showEstimate={true}
+             primaryTextSize="6xl"
+             secondaryTextSize="2xl"
+           />
+        </div>
+                 <div className="lg:basis-2/5 lg:w-2/5 text-center flex flex-col items-center gap-6">
+           {/* Numpad */}
+             <BuiNumpad ref={numpadRef} />
+          
+          {/* Action Buttons */}
+          <div className="flex gap-6 w-full">
+            <BuiButton
+              label="Go Back"
+              styleType="outline"
+              wide="true"
+              onClick={onClose}
+            >
+            </BuiButton>
+                         <BuiButton
+               label="Continue"
+               wide="true"
+               disabled={!isAmountValid ? "true" : ""}
+               onClick={handleConfirm}
+             >
+            </BuiButton>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const [selectedAmount, setSelectedAmount] = useState<number | null>(null)
   const [tipOptionsState, setTipOptionsState] = useState<TipOption[]>(baseTipOptions)
   const [isLoadingPrices, setIsLoadingPrices] = useState(true)
   const [priceError, setPriceError] = useState<string | null>(null)
+  const [showCustomModal, setShowCustomModal] = useState(false)
+  const [currentInputAmount, setCurrentInputAmount] = useState('0')
+  const [customAmountSats, setCustomAmountSats] = useState<number>(0)
 
   // Load Bitcoin price and calculate secondary amounts on component mount
   useEffect(() => {
@@ -110,6 +255,35 @@ function App() {
     )
   }
 
+  const handleCustomSelect = () => {
+    setShowCustomModal(true)
+  }
+
+  const handleCustomConfirm = async (amount: number) => {
+    setSelectedAmount(amount)
+    setCurrentInputAmount(amount.toString())
+    setShowCustomModal(false)
+    
+    // Calculate Bitcoin amount for custom amount
+    try {
+      const btcAmount = await convertUsdToSats(amount)
+      setCustomAmountSats(btcAmount)
+    } catch (error) {
+      console.error('Failed to calculate Bitcoin amount for custom amount:', error)
+      // Use fallback calculation
+      const fallbackBtcAmount = Math.round(amount * 1500) // Rough fallback: $1 ≈ 1500 sats
+      setCustomAmountSats(fallbackBtcAmount)
+    }
+    
+    // Update the custom tile to show the selected amount
+    setTipOptionsState(prev => 
+      prev.map(option => ({
+        ...option,
+        selected: false
+      }))
+    )
+  }
+
   return (
     <div className="text-center flex flex-col gap-8 lg:gap-12 p-6 lg:p-12">
       <header className="flex flex-col gap-4 lg:gap-6">
@@ -158,14 +332,15 @@ function App() {
           ))}
           <BuiAmountOptionTile
             custom={true}
-            amountDefined={false}
-            primaryAmount={0}
-            secondaryAmount={0}
+            amountDefined={currentInputAmount !== '0'}
+            primaryAmount={parseFloat(currentInputAmount) || 0}
+            secondaryAmount={customAmountSats}
             showSecondaryCurrency={true}
             secondarySymbol={'₿'}
             showEstimate={true}
             primaryTextSize="6xl"
             secondaryTextSize="2xl"
+            onClick={handleCustomSelect}
             selected={selectedAmount !== null && !tipOptionsState.some(opt => opt.selected)}
           />
         </div>
@@ -180,7 +355,15 @@ function App() {
             disabled={!selectedAmount ? "true" : ""}
           />
         </div>
-        )}
+      )}
+
+      <CustomAmountModal
+        isOpen={showCustomModal}
+        onClose={() => setShowCustomModal(false)}
+        onConfirm={handleCustomConfirm}
+        currentAmount={currentInputAmount}
+        onAmountChange={setCurrentInputAmount}
+      />
     </div>
   )
 }
