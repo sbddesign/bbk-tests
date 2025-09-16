@@ -24,13 +24,13 @@ pnpm install
 pnpm add @sbddesign/bui-ui @sbddesign/bui-tokens @sbddesign/bui-icons
 
 # Install additional dependencies
-pnpm add @netlify/functions uuid
+pnpm add @netlify/functions uuid tailwindcss @tailwindcss/vite
 pnpm add -D @types/uuid netlify-cli
 ```
 
-### Check your work
+### Check your step 1 work
 
-Run `pnpm dev`. You should find a web page that says "Vite + React" in the heading. If so, you have completed step 1.
+Run `pnpm dev`. You should find a web page at http://localhost:5173 that says "Vite + React" in the heading. If so, you have completed step 1.
 
 ## Step 2: Configure Vite and TypeScript
 
@@ -66,6 +66,10 @@ Update `package.json` scripts:
   }
 }
 ```
+
+### Check your step 2 work
+
+Run `pnpm dev`. You should find a web page at http://localhost:8888 that says "Vite + React" in the heading. If so, you have completed step 1.
 
 ## Step 3: Set Up Netlify Configuration
 
