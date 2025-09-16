@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { 
   BuiAmountOptionTileReact as BuiAmountOptionTile,
   BuiButtonReact as BuiButton
 } from '@sbddesign/bui-ui/react'
 import '@sbddesign/bui-ui/tokens.css'
 import { Recipient } from './components/Recipient'
+import { getCurrentBtcPrice, PriceApiError } from './services/priceApi'
 
 // Type definition for tip options
 interface TipOption {
@@ -47,6 +48,57 @@ const baseTipOptions = [
 function App() {
   const [selectedAmount, setSelectedAmount] = useState<number | null>(null)
   const [tipOptionsState, setTipOptionsState] = useState<TipOption[]>(baseTipOptions)
+  const [isLoadingPrices, setIsLoadingPrices] = useState(true)
+  const [priceError, setPriceError] = useState<string | null>(null)
+
+  // Load Bitcoin price and calculate secondary amounts on component mount
+  useEffect(() => {
+    const loadPricesAndCalculateAmounts = async () => {
+      try {
+        setIsLoadingPrices(true)
+        setPriceError(null)
+        
+        console.log('Loading Bitcoin price...')
+        const btcPrice = await getCurrentBtcPrice()
+        
+        // Calculate secondary amounts (satoshis) for each tip option
+        const tipOptionsWithSats: TipOption[] = baseTipOptions.map(option => {
+          const btcAmount = option.primaryAmount / btcPrice
+          const satoshis = Math.round(btcAmount * 100_000_000) // Convert to sats
+          
+          return {
+            ...option,
+            secondaryAmount: satoshis
+          }
+        })
+        
+        console.log('Tip options with calculated sats:', tipOptionsWithSats)
+        setTipOptionsState(tipOptionsWithSats)
+        
+      } catch (error) {
+        console.error('Failed to load Bitcoin price:', error)
+        
+        if (error instanceof PriceApiError) {
+          setPriceError(`Failed to load Bitcoin price: ${error.message}`)
+        } else {
+          setPriceError('Failed to load Bitcoin price. Please try again.')
+        }
+        
+        // Use fallback prices if API fails
+        const fallbackOptions: TipOption[] = baseTipOptions.map(option => ({
+          ...option,
+          secondaryAmount: Math.round(option.primaryAmount * 1500) // Rough fallback: $1 ≈ 1500 sats
+        }))
+        
+        setTipOptionsState(fallbackOptions)
+        
+      } finally {
+        setIsLoadingPrices(false)
+      }
+    }
+
+    loadPricesAndCalculateAmounts()
+  }, [])
 
   const handleAmountSelect = (amount: number) => {
     setSelectedAmount(amount)
@@ -65,7 +117,24 @@ function App() {
         <p className="text-3xl lg:text-5xl">{import.meta.env.VITE_TIP_JAR_SLOGAN || "Send us a tip"}</p>
       </header>
 
+      {/* Loading state */}
+      {isLoadingPrices && (
+        <div className="flex flex-col items-center gap-4 py-8">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[var(--text-primary)]"></div>
+          <p className="text-[var(--text-secondary)]">Loading Bitcoin prices...</p>
+        </div>
+      )}
+
+      {/* Price error state */}
+      {priceError && (
+        <div className="flex flex-col items-center gap-4 py-4">
+          <p className="text-red-500 text-sm">⚠️ {priceError}</p>
+          <p className="text-[var(--text-secondary)] text-xs">Using approximate prices</p>
+        </div>
+      )}
+
       {/* Tip options */}
+      {!isLoadingPrices && (
         <div className="flex flex-col lg:flex-row w-full gap-6 max-w-xl lg:max-w-7xl mx-auto">
           {tipOptionsState.map((option) => (
             <BuiAmountOptionTile
@@ -100,7 +169,9 @@ function App() {
             selected={selectedAmount !== null && !tipOptionsState.some(opt => opt.selected)}
           />
         </div>
+      )}
 
+      {!isLoadingPrices && (
         <div className="text-center">
           <BuiButton
             styleType="filled"
@@ -109,6 +180,7 @@ function App() {
             disabled={!selectedAmount ? "true" : ""}
           />
         </div>
+        )}
     </div>
   )
 }
