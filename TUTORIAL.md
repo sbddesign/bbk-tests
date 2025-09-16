@@ -773,3 +773,885 @@ Before the final closing `</div>`, add this:
 In [your browser](http://localhost:5173/), you can go click "Custom Amount". It will bring up a modal with a numpad. If you press the numpad and choose a dollar value, it will pull up reflect an updated amount of bitcoin. If you click continue, the amount you selected will now be visible inside the "custom amount" tile.
 
 ![Screenshot of what the custom amount modal should look like after completing step 4](./public/step-4-custom-amount.png)
+
+## Step 5: Receive payments with Voltage API
+
+We will now need to setup both Voltage and Netlify. Since we plan to deploy to Netlify and Netlify is serverless, we will construct the API call to Voltage Payments in a way that will be compatible with Netlify's serverless functions.
+
+Install Netlify CLI if it is not already installed.
+
+Run `pnpm add -D netlify-cli` or globally with `npm install -g netlify-cli`.
+
+Install `uuid` and netlify functions:
+
+`pnpm add @netlify/functions uuid`
+
+Update scripts in `package.json`:
+
+```json
+"scripts": {
+    "dev": "netlify dev",
+    "dev:vite": "vite",
+    "build": "tsc -b && vite build",
+    "lint": "eslint .",
+    "preview": "vite preview"
+}
+```
+
+Create `netlify.toml` with this content:
+
+```toml
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[functions]
+  directory = "netlify/functions"
+
+[[redirects]]
+  from = "/api/voltage-payments"
+  to = "/.netlify/functions/voltage-payments"
+  status = 200
+
+[build.environment]
+  NODE_VERSION = "18"
+
+[dev]
+  # Start the Vite dev server when running `netlify dev`
+  command = "pnpm dev:vite"
+  # Tell Netlify Dev which port Vite uses
+  targetPort = 5173
+```
+
+Add to `.gitignore`:
+
+```
+# Local Netlify folder
+.netlify
+```
+
+Create `src/config/voltage.ts` with the following:
+
+```typescript
+// Voltage API configuration
+const IS_DEV = import.meta.env.DEV;
+
+export const voltageConfig = {
+  // Only read VITE_* variables in development to avoid bundling secrets in production
+  apiKey: IS_DEV ? import.meta.env.VITE_VOLTAGE_API_KEY : undefined,
+  orgId: IS_DEV ? import.meta.env.VITE_VOLTAGE_ORG_ID : undefined,
+  envId: IS_DEV ? import.meta.env.VITE_VOLTAGE_ENV_ID : undefined,
+  walletId: IS_DEV ? import.meta.env.VITE_VOLTAGE_WALLET_ID : undefined,
+  // Use proxy in development; production uses Netlify Functions, baseUrl is unused
+  baseUrl: IS_DEV ? '/api/voltage' : 'https://voltageapi.com/v1'
+};
+
+export function isVoltageConfigured(): boolean {
+  // In development we need client-side credentials to call the Voltage API via proxy.
+  if (IS_DEV) {
+    return !!(
+      voltageConfig.apiKey &&
+      voltageConfig.orgId &&
+      voltageConfig.envId &&
+      voltageConfig.walletId
+    );
+  }
+
+  // In production, serverless function handles credentials; allow proceeding.
+  return true;
+}
+```
+
+Create `src/services/voltageApi.ts` with the following:
+
+```typescript
+import { voltageConfig } from '../config/voltage';
+import { v4 as uuidv4 } from 'uuid';
+import { convertUsdToSats } from './priceApi';
+
+// Types based on Voltage API documentation
+export interface VoltageAmount {
+  amount: number;
+  currency: 'btc' | 'usd';
+  unit: 'sat' | 'msat' | 'btc' | 'usd';
+}
+
+// Receive payment request structure (what we need for creating invoices)
+export interface CreateReceivePaymentRequest {
+  id: string;
+  payment_kind: 'bolt11' | 'onchain' | 'bip21';
+  wallet_id: string;
+  amount_msats: number; // Amount in millisatoshis
+  currency: 'btc' | 'usd';
+  description?: string;
+}
+
+export interface PaymentData {
+  amount_msats: number;
+  expiration?: string | null;
+  memo?: string;
+  payment_request: string; // Lightning invoice
+}
+
+export interface RequestedAmount {
+  amount: number;
+  currency: 'btc' | 'usd';
+  unit: 'msats' | 'sats' | 'btc';
+}
+
+export interface Payment {
+  id: string;
+  organization_id: string;
+  environment_id: string;
+  wallet_id: string;
+  bip21_uri?: string;
+  created_at: string;
+  currency: 'btc' | 'usd';
+  data: PaymentData;
+  direction: 'receive' | 'send';
+  error?: string | null;
+  frozen: any[];
+  requested_amount: RequestedAmount;
+  status: 'receiving' | 'completed' | 'failed' | 'pending' | 'expired';
+  type: 'bolt11' | 'onchain' | 'bip21';
+  updated_at: string;
+}
+
+export class VoltageApiError extends Error {
+  public status?: number;
+  public response?: any;
+
+  constructor(
+    message: string,
+    status?: number,
+    response?: any
+  ) {
+    super(message);
+    this.name = 'VoltageApiError';
+    this.status = status;
+    this.response = response;
+  }
+}
+
+class VoltageApi {
+  constructor() {}
+
+  async createPayment(request: CreateReceivePaymentRequest): Promise<void> {
+    // Always use serverless function for consistent behavior
+    const response = await fetch('/api/voltage-payments', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(request),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new VoltageApiError(
+        `HTTP ${response.status}: ${response.statusText}`,
+        response.status,
+        errorText
+      );
+    }
+
+    // 202 response has no body, just return
+    return;
+  }
+
+  async getPayment(paymentId: string): Promise<Payment> {
+    // Always use serverless function for consistent behavior
+    const response = await fetch(`/api/voltage-payments?id=${encodeURIComponent(paymentId)}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new VoltageApiError(
+        `HTTP ${response.status}: ${response.statusText}`,
+        response.status,
+        errorText
+      );
+    }
+
+    const payment = await response.json();
+    return payment as Payment;
+  }
+}
+
+export const voltageApi = new VoltageApi();
+
+// Helper function to poll payment status until payment methods are available
+async function pollPaymentStatus(
+  paymentId: string,
+  maxAttempts: number = 30,
+  intervalMs: number = 1000
+): Promise<Payment> {
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      const payment = await voltageApi.getPayment(paymentId);
+      
+      // Check if payment data is available with Lightning invoice
+      if (payment.data && payment.data.payment_request) {
+        console.log(`Payment data ready after ${attempt + 1} attempts`);
+        return payment;
+      }
+      
+      console.log(`Attempt ${attempt + 1}: Payment data not ready yet, polling again...`);
+      
+      // Wait before next attempt
+      if (attempt < maxAttempts - 1) {
+        await new Promise(resolve => setTimeout(resolve, intervalMs));
+      }
+    } catch (error) {
+      console.error(`Polling attempt ${attempt + 1} failed:`, error);
+      
+      // If it's the last attempt, throw the error
+      if (attempt === maxAttempts - 1) {
+        throw error;
+      }
+      
+      // Wait before retrying
+      await new Promise(resolve => setTimeout(resolve, intervalMs));
+    }
+  }
+  
+  throw new VoltageApiError('Payment data not ready after maximum polling attempts');
+}
+
+// Helper function to poll payment status until completed
+async function pollPaymentCompletion(
+  paymentId: string,
+  maxAttempts: number = 300, // 5 minutes at 1 second intervals
+  intervalMs: number = 1000
+): Promise<Payment> {
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      const payment = await voltageApi.getPayment(paymentId);
+      
+      console.log(`Payment status check ${attempt + 1}: ${payment.status}`);
+      
+      // Check if payment is completed
+      if (payment.status === 'completed') {
+        console.log(`Payment completed after ${attempt + 1} attempts!`);
+        return payment;
+      }
+      
+      // If payment failed or expired, throw error
+      if (payment.status === 'failed' || payment.status === 'expired') {
+        throw new VoltageApiError(`Payment ${payment.status}`);
+      }
+      
+      // Wait before next attempt
+      if (attempt < maxAttempts - 1) {
+        await new Promise(resolve => setTimeout(resolve, intervalMs));
+      }
+    } catch (error) {
+      console.error(`Payment status polling attempt ${attempt + 1} failed:`, error);
+      
+      // If it's the last attempt, throw the error
+      if (attempt === maxAttempts - 1) {
+        throw error;
+      }
+      
+      // Wait before retrying
+      await new Promise(resolve => setTimeout(resolve, intervalMs));
+    }
+  }
+  
+  throw new VoltageApiError('Payment not completed after maximum polling attempts');
+}
+
+// Helper function to create tip payment methods
+export async function createTipPaymentMethods(
+  amountUsd: number,
+  description: string = 'Bitcoin Tip'
+): Promise<{
+  lightningInvoice?: string;
+  onchainAddress?: string;
+  payment: Payment;
+  pollForCompletion: () => Promise<Payment>;
+}> {
+  // Validate inputs and configuration before proceeding
+  if (!Number.isFinite(amountUsd) || amountUsd <= 0) {
+    throw new VoltageApiError('Amount must be a positive number');
+  }
+  // Only require wallet in development; production uses server override
+  if (import.meta.env.DEV && !voltageConfig.walletId) {
+    throw new VoltageApiError('Voltage wallet is not configured');
+  }
+
+  try {
+    // Convert USD to satoshis using real-time Bitcoin price
+    console.log(`Converting $${amountUsd} USD to satoshis...`);
+    const amountSats = await convertUsdToSats(amountUsd);
+    const amountMsats = amountSats * 1000; // Convert sats to millisats
+
+    const paymentId = uuidv4(); // Generate unique ID for this payment request
+    
+    const paymentRequest: CreateReceivePaymentRequest = {
+      id: paymentId,
+      payment_kind: 'bolt11', // Creates Lightning-only payment
+      // In dev, pass actual wallet; in prod, use placeholder; server will override
+      wallet_id: import.meta.env.DEV ? (voltageConfig.walletId as string) : 'server',
+      amount_msats: amountMsats, // Amount in millisatoshis
+      currency: 'btc',
+      description,
+    };
+    // …rest of existing logic…
+
+    // Create the payment request (returns 202 with no body)
+    await voltageApi.createPayment(paymentRequest);
+    
+    console.log(`Payment request created with ID: ${paymentId}, polling for payment data...`);
+    
+    // Poll for payment status until payment data is ready
+    const payment = await pollPaymentStatus(paymentId);
+
+    // Extract Lightning invoice from payment data
+    return {
+      lightningInvoice: payment.data.payment_request,
+      onchainAddress: '', // Leave empty for bolt11 payments
+      payment,
+      pollForCompletion: () => pollPaymentCompletion(paymentId),
+    };
+  } catch (error) {
+    if (error instanceof VoltageApiError) {
+      throw error;
+    }
+    throw new VoltageApiError(
+      `Failed to create payment: ${error instanceof Error ? error.message : 'Unknown error'}`
+    );
+  }
+}
+```
+
+Create `netlify/functions/voltage-payments.ts` with the following:
+
+```typescript
+// Netlify serverless function for handling Voltage API requests
+import type { Handler, HandlerEvent, HandlerContext } from '@netlify/functions';
+
+interface CreateReceivePaymentRequest {
+  id: string;
+  payment_kind: 'bolt11' | 'onchain' | 'bip21';
+  wallet_id: string;
+  amount_msats: number; // Amount in millisatoshis
+  currency: 'btc' | 'usd';
+  description?: string;
+}
+
+export const handler: Handler = async (event: HandlerEvent, context: HandlerContext) => {
+  // Enable CORS
+  const headers = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+  };
+
+  if (event.httpMethod === 'OPTIONS') {
+    return {
+      statusCode: 200,
+      headers,
+      body: '',
+    };
+  }
+
+  try {
+    const VOLTAGE_API_KEY = process.env.VOLTAGE_API_KEY || process.env.VITE_VOLTAGE_API_KEY;
+    const VOLTAGE_ORG_ID = process.env.VOLTAGE_ORG_ID || process.env.VITE_VOLTAGE_ORG_ID;
+    const VOLTAGE_ENV_ID = process.env.VOLTAGE_ENV_ID || process.env.VITE_VOLTAGE_ENV_ID;
+    const VOLTAGE_WALLET_ID = process.env.VOLTAGE_WALLET_ID || process.env.VITE_VOLTAGE_WALLET_ID;
+
+    if (!VOLTAGE_API_KEY || !VOLTAGE_ORG_ID || !VOLTAGE_ENV_ID) {
+      return {
+        statusCode: 500,
+        headers,
+        body: JSON.stringify({ error: 'Voltage API configuration missing' }),
+      };
+    }
+
+    // Handle GET to fetch payment by ID
+    if (event.httpMethod === 'GET') {
+      const url = new URL(event.rawUrl);
+      const paymentId = url.searchParams.get('id') || url.searchParams.get('paymentId') || undefined;
+
+      if (!paymentId) {
+        return {
+          statusCode: 400,
+          headers,
+          body: JSON.stringify({ error: 'Missing payment id' }),
+        };
+      }
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10_000); // 10s
+      const response = await fetch(
+        `https://voltageapi.com/v1/organizations/${VOLTAGE_ORG_ID}/environments/${VOLTAGE_ENV_ID}/payments/${paymentId}`,
+        {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': VOLTAGE_API_KEY,
+          },
+          signal: controller.signal
+        }
+      );
+      clearTimeout(timeout);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Voltage API Error (GET payment):', { status: response.status, errorText });
+        return {
+          statusCode: response.status,
+          headers,
+          body: JSON.stringify({ 
+            error: `Voltage API Error: ${response.status}`,
+            details: errorText 
+          }),
+        };
+      }
+
+      const payment = await response.json();
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify(payment),
+      };
+    }
+
+    if (event.httpMethod !== 'POST') {
+      return {
+        statusCode: 405,
+        headers,
+        body: JSON.stringify({ error: 'Method not allowed' }),
+      };
+    }
+
+    // Parse request body
+    let paymentRequest: CreateReceivePaymentRequest;
+    
+    try {
+      paymentRequest = JSON.parse(event.body || '{}');
+    } catch (parseError) {
+      console.error('Failed to parse request body:', parseError);
+      return {
+        statusCode: 400,
+        headers,
+        body: JSON.stringify({ 
+          error: 'Invalid JSON in request body',
+          details: parseError instanceof Error ? parseError.message : 'Unknown parse error'
+        }),
+      };
+    }
+
+    // Override wallet id with server configuration when available
+    if (VOLTAGE_WALLET_ID) {
+      paymentRequest.wallet_id = VOLTAGE_WALLET_ID;
+    }
+
+    // Validate required fields
+    if (!paymentRequest.id || !paymentRequest.payment_kind ||
+        typeof paymentRequest.amount_msats !== 'number' || !paymentRequest.currency ||
+        !paymentRequest.wallet_id) {
+      return {
+        statusCode: 400,
+        headers,
+        body: JSON.stringify({ 
+          error: 'Missing required fields in payment request',
+          details: 'Required fields: id, payment_kind, wallet_id, amount_msats, currency'
+        }),
+      };
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10_000); // 10s
+    const response = await fetch(
+      `https://voltageapi.com/v1/organizations/${VOLTAGE_ORG_ID}/environments/${VOLTAGE_ENV_ID}/payments`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': VOLTAGE_API_KEY,
+          'Idempotency-Key': paymentRequest.id
+        },
+        body: JSON.stringify(paymentRequest),
+        signal: controller.signal
+      }
+    );
+    clearTimeout(timeout);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Voltage API Error:', { status: response.status, errorText });
+      return {
+        statusCode: response.status,
+        headers,
+        body: JSON.stringify({ 
+          error: `Voltage API Error: ${response.status}`,
+          details: errorText 
+        }),
+      };
+    }
+
+    // Payment creation returns 202 with no body
+    if (response.status === 202) {
+      return {
+        statusCode: 202,
+        headers,
+        body: JSON.stringify({ success: true, message: 'Payment request created' }),
+      };
+    }
+
+    const payment = await response.json();
+    return {
+      statusCode: 200,
+      headers,
+      body: JSON.stringify(payment),
+    };
+  } catch (error) {
+    console.error('Payment creation error:', error);
+    return {
+      statusCode: 500,
+      headers,
+      body: JSON.stringify({ 
+        error: 'Failed to create payment',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      }),
+    };
+  }
+};
+```
+
+Create `srx/components/ReceiveScreen.tsx` with the following:
+
+```typescript
+import { useState, useEffect } from 'react';
+import { 
+  BuiBitcoinQrDisplayReact as BuiBitcoinQrDisplay,
+  BuiButtonReact as BuiButton,
+  BuiMoneyValueReact as BuiMoneyValue,
+  BuiBitcoinValueReact as BuiBitcoinValue,
+} from '@sbddesign/bui-ui/react';
+import { 
+  createTipPaymentMethods,
+  VoltageApiError
+} from '../services/voltageApi';
+
+import { isVoltageConfigured } from '../config/voltage';
+import { Recipient } from './Recipient';
+// Import icons as React components
+const CopyIcon = () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M8 5H6C4.89543 5 4 5.89543 4 7V19C4 20.1046 4.89543 21 6 21H16C17.1046 21 18 20.1046 18 19V7C18 5.89543 17.1046 5 16 5H14M8 5C8 6.10457 8.89543 7 10 7H14C15.1046 7 16 6.10457 16 5M8 5C8 3.89543 8.89543 3 10 3H14C15.1046 3 16 3.89543 16 5M12 12H16M12 16H16M8 12H8.01M8 16H8.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>;
+
+const ArrowLeftIcon = () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M19 12H5M12 19L5 12L12 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>;
+
+const CheckCircleIcon = () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M22 11.08V12C21.9988 14.1564 21.3005 16.2547 20.0093 17.9818C18.7182 19.7088 16.9033 20.9725 14.8354 21.5839C12.7674 22.1953 10.5573 22.1219 8.53447 21.3746C6.51168 20.6273 4.78465 19.2461 3.61096 17.4371C2.43727 15.628 1.87979 13.4881 2.02168 11.3363C2.16356 9.18455 2.99721 7.13631 4.39828 5.49706C5.79935 3.85781 7.69279 2.71537 9.79619 2.24013C11.8996 1.7649 14.1003 1.98232 16.07 2.85999" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><path d="M22 4L12 14.01L9 11.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>;
+
+interface ReceiveScreenProps {
+  amount: number;
+  bitcoinAmount: number;
+  onGoBack: () => void;
+  onCopy: () => void;
+}
+
+interface PaymentData {
+  lightningInvoice?: string;
+  onchainAddress?: string;
+}
+
+export default function ReceiveScreen({ amount, bitcoinAmount, onGoBack, onCopy }: ReceiveScreenProps) {
+  const [paymentData, setPaymentData] = useState<PaymentData | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [isCopied, setIsCopied] = useState(false);
+  const [isPaymentComplete, setIsPaymentComplete] = useState(false);
+
+  useEffect(() => {
+    const createPayment = async () => {
+      if (!isVoltageConfigured()) {
+        setError('Voltage API is not properly configured');
+        setIsLoading(false);
+        return;
+      }
+
+      try {
+        setIsLoading(true);
+        setError(null);
+        
+        const result = await createTipPaymentMethods(
+          amount,
+          `Bitcoin tip for $${amount} - ${import.meta.env.VITE_TIP_JAR_NAME || "Recipient"}`
+        );
+
+        console.log('Payment result:', result);
+        console.log('Lightning invoice:', result.lightningInvoice);
+        
+        const newPaymentData = {
+          lightningInvoice: result.lightningInvoice,
+          onchainAddress: result.onchainAddress,
+        };
+        
+        console.log('Setting payment data:', newPaymentData);
+        setPaymentData(newPaymentData);
+
+        // Start polling for payment completion in the background
+        console.log('Starting payment completion polling...');
+        result.pollForCompletion()
+          .then((completedPayment) => {
+            console.log('Payment completed!', completedPayment);
+            setIsPaymentComplete(true);
+            // Don't call onPaymentComplete() - we'll handle it in the UI
+          })
+          .catch((pollError) => {
+            console.error('Payment completion polling failed:', pollError);
+            // Don't show error to user, they might have paid successfully
+            // The polling might fail due to network issues, etc.
+          });
+      } catch (err) {
+        console.error('Failed to create payment:', err);
+        
+        if (err instanceof VoltageApiError) {
+          setError(`Payment creation failed: ${err.message}`);
+        } else {
+          setError('Failed to create payment. Please try again.');
+        }
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    createPayment();
+  }, [amount]);
+
+  const handleCopy = async () => {
+    try {
+      if (!paymentData?.onchainAddress && !paymentData?.lightningInvoice) {
+        console.error('No payment data available to copy');
+        return;
+      }
+
+      let textToCopy = '';
+      
+      if (paymentData.onchainAddress && paymentData.lightningInvoice) {
+        // Create unified BIP21 string
+        textToCopy = `bitcoin:${paymentData.onchainAddress}?lightning=${paymentData.lightningInvoice}`;
+      } else if (paymentData.lightningInvoice) {
+        textToCopy = paymentData.lightningInvoice;
+      } else if (paymentData.onchainAddress) {
+        textToCopy = paymentData.onchainAddress;
+      }
+
+      if (textToCopy) {
+        await navigator.clipboard.writeText(textToCopy);
+        setIsCopied(true);
+        onCopy();
+        
+        // Reset copied state after 2 seconds
+        setTimeout(() => {
+          setIsCopied(false);
+        }, 2000);
+      }
+    } catch (error) {
+      console.error('Failed to copy:', error);
+    }
+  };
+
+  const handleLeaveAnotherTip = () => {
+    // Go back to landing screen by calling onGoBack
+    onGoBack();
+  };
+
+  // Debug logging
+  console.log('ReceiveScreen render - paymentData:', paymentData);
+  console.log('ReceiveScreen render - isLoading:', isLoading);
+  console.log('ReceiveScreen render - error:', error);
+
+  return (
+    <div className="bg-[var(--background)] min-h-screen flex flex-col items-center justify-start p-12 gap-12">
+      {/* Header Section */}
+      <div className="flex flex-col items-center gap-2">
+        <Recipient size="Small" />
+        <h1 className="text-4xl font-normal text-center">{import.meta.env.VITE_TIP_JAR_SLOGAN || "Send us a tip"}</h1>
+      </div>
+
+      {/* Amount Display */}
+      <div className="flex items-center gap-8">
+        <BuiMoneyValue
+          amount={amount.toString()}
+          symbol="$"
+          showEstimate="true"
+          textSize="3xl"
+        />
+        <span className="text-[var(--text-secondary)]">
+          <BuiBitcoinValue
+            amount={bitcoinAmount.toString()}
+            textSize="3xl"
+          />
+        </span>
+      </div>
+
+      {/* Bitcoin QR Display */}
+      <div className="w-[392px]">
+        <BuiBitcoinQrDisplay
+          key={paymentData?.lightningInvoice || 'loading'} // Force re-render when invoice changes
+          lightning={paymentData?.lightningInvoice || ''}
+          option="lightning"
+          selector="toggle"
+          size="264"
+          showImage="true"
+          dotType="dot"
+          dotColor="#000000"
+          copyOnTap="true"
+          placeholder={isLoading ? "true" : ""}
+          error={error ? "true" : ""}
+          errorMessage={error || undefined}
+          complete={isPaymentComplete ? "true" : ""}
+        />
+      </div>
+
+      {/* Bottom Navigation - Vertical Layout */}
+      <div className="w-[314px] flex flex-col gap-4">
+        {isPaymentComplete ? (
+          <BuiButton
+            label="Leave Another Tip"
+            styleType="filled"
+            size="large"
+            wide="true"
+            onClick={handleLeaveAnotherTip}
+          >
+            <CheckCircleIcon />
+          </BuiButton>
+        ) : (
+          <>
+            <BuiButton
+              label={isCopied ? "Copied!" : (isLoading ? "Loading..." : "Copy")}
+              styleType="filled"
+              size="large"
+              wide="true"
+              disabled={isLoading || !!error || !paymentData ? "true" : ""}
+              onClick={handleCopy}
+            >
+              {isCopied ? <CheckCircleIcon /> : <CopyIcon />}
+            </BuiButton>
+            <BuiButton
+              label="Go Back"
+              styleType="outline"
+              size="large"
+              wide="true"
+              onClick={onGoBack}
+            >
+              <ArrowLeftIcon />
+            </BuiButton>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+```
+
+Make the following updates to `App.tsx`:
+
+Add imports:
+
+```typescript
+import ReceiveScreen from './components/ReceiveScreen'
+```
+
+Add state constant:
+
+```typescript
+const [showReceiveScreen, setShowReceiveScreen] = useState(false)
+```
+
+Add to `App()`:
+
+```typescript
+  const handleContinue = () => {
+    if (selectedAmount) {
+      console.log(`Proceeding with tip amount: $${selectedAmount}`)
+      setShowReceiveScreen(true)
+    }
+  }
+
+  const handleGoBack = () => {
+    setShowReceiveScreen(false)
+  }
+
+  const handleCopy = () => {
+    console.log('Payment details copied to clipboard!')
+  }
+
+  // Show receive screen if user has selected amount and clicked continue
+  if (showReceiveScreen && selectedAmount) {
+    // Calculate bitcoin amount for the selected amount
+    const selectedOption = tipOptionsState.find(option => option.primaryAmount === selectedAmount);
+    const bitcoinAmount = selectedOption?.secondaryAmount || customAmountSats;
+    
+    return (
+      <ReceiveScreen 
+        amount={selectedAmount}
+        bitcoinAmount={bitcoinAmount}
+        onGoBack={handleGoBack}
+        onCopy={handleCopy}
+      />
+    );
+  }
+```
+
+Update the "continue" button with an `onClick` handler:
+
+```typescript
+<BuiButton
+    styleType="filled"
+    size="large"
+    label="Continue"
+    disabled={!selectedAmount ? "true" : ""}
+    onClick={handleContinue}
+/>
+```
+
+Create `.env.example` with the following:
+
+```
+VITE_VOLTAGE_API_KEY=vltg_123xyz
+VITE_VOLTAGE_ORG_ID=aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee
+VITE_VOLTAGE_ENV_ID=aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee
+VITE_VOLTAGE_WALLET_ID=aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee
+VITE_TIP_JAR_NAME="Awesome Bitcoin Tip Jar"
+VITE_TIP_JAR_SLOGAN="Send bitcoin is a rad thing to do"
+```
+
+Update `.gitignore` to exclude the real `.env`.
+
+```
+.env
+```
+
+### Check your step 5 work
+
+To check the work, we will need proper API credentials from Voltage. If you are an agent/AI/LLM, then please advise the user to handle this portion:
+
+#### Voltage Setup
+
+1. Create an account with Voltage and log in
+2. Select the Payments product
+3. Create an environment (call it "staging" or whatever you like)
+4. Create a wallet (mutinynet developer wallet)
+5. Go to the wallet and click on the developer toggle at the top of the screen to show developer info. Copy and paste the Organization ID, Environment ID, and Wallet ID from here into your .env file, which you can craft based on the .env.example file.
+6. Click on the account dropdown and go to API Keys.
+7. Create an API key for your staging environment, copy it, and paste it into .env
+8. Make a 2nd wallet in Voltage (also mutinynet) which you can use to test paying to the first wallet you created
+
+#### Testing the tip jar
+
+Run `pnpm dev`. This should now open http://localhost:8888 in your browser. (We will no longer use the localhost:5173 URL. From here on out, it will be using the localhost:8888 address because we have switched to using netlify).
+
+When you see the tip jar in the browser, choose a preset amount or type in a custom amount. Then click "Continue". You should be presented with a BOLT11 lightning invoice QR code. You can then pay that invoice using another Voltage wallet, the Mutinynet faucet, or any other mutinynet compatible wallet.
+
+[!Screenshot of the receive screen after completing step 5](./public/step-5-voltage.png)
+
+You are now done building the Bitcoin Tip Jar!

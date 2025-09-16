@@ -1,0 +1,20 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[functions]
+  directory = "netlify/functions"
+
+[[redirects]]
+  from = "/api/voltage-payments"
+  to = "/.netlify/functions/voltage-payments"
+  status = 200
+
+[build.environment]
+  NODE_VERSION = "18"
+
+[dev]
+  # Start the Vite dev server when running `netlify dev`
+  command = "pnpm dev:vite"
+  # Tell Netlify Dev which port Vite uses
+  targetPort = 5173

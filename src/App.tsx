@@ -7,6 +7,7 @@ import {
 import '@sbddesign/bui-ui/tokens.css'
 import { Recipient } from './components/Recipient'
 import { getCurrentBtcPrice, PriceApiError, convertUsdToSats } from './services/priceApi'
+import ReceiveScreen from './components/ReceiveScreen'
 
 // Type definition for NumPadClickDetail
 interface NumPadClickDetail {
@@ -195,6 +196,7 @@ function App() {
   const [showCustomModal, setShowCustomModal] = useState(false)
   const [currentInputAmount, setCurrentInputAmount] = useState('0')
   const [customAmountSats, setCustomAmountSats] = useState<number>(0)
+  const [showReceiveScreen, setShowReceiveScreen] = useState(false)
 
   // Load Bitcoin price and calculate secondary amounts on component mount
   useEffect(() => {
@@ -284,6 +286,37 @@ function App() {
     )
   }
 
+  const handleContinue = () => {
+    if (selectedAmount) {
+      console.log(`Proceeding with tip amount: $${selectedAmount}`)
+      setShowReceiveScreen(true)
+    }
+  }
+
+  const handleGoBack = () => {
+    setShowReceiveScreen(false)
+  }
+
+  const handleCopy = () => {
+    console.log('Payment details copied to clipboard!')
+  }
+
+  // Show receive screen if user has selected amount and clicked continue
+  if (showReceiveScreen && selectedAmount) {
+    // Calculate bitcoin amount for the selected amount
+    const selectedOption = tipOptionsState.find(option => option.primaryAmount === selectedAmount);
+    const bitcoinAmount = selectedOption?.secondaryAmount || customAmountSats;
+    
+    return (
+      <ReceiveScreen 
+        amount={selectedAmount}
+        bitcoinAmount={bitcoinAmount}
+        onGoBack={handleGoBack}
+        onCopy={handleCopy}
+      />
+    );
+  }
+
   return (
     <div className="text-center flex flex-col gap-8 lg:gap-12 p-6 lg:p-12">
       <header className="flex flex-col gap-4 lg:gap-6">
@@ -353,6 +386,7 @@ function App() {
             size="large"
             label="Continue"
             disabled={!selectedAmount ? "true" : ""}
+            onClick={handleContinue}
           />
         </div>
       )}
