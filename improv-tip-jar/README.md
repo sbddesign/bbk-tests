@@ -9,6 +9,8 @@ A Bitcoin Lightning Network tip jar for your local improv comedy group, built wi
 - ⚡ Lightning Network payments via Voltage API
 - 📱 Responsive design with QR code display
 - 🎨 Beautiful UI using Bitcoin Builder Kit components
+- 🔄 Real-time payment status checking
+- 🌐 Netlify deployment ready
 
 ## Getting Started
 
@@ -42,7 +44,12 @@ Start the development server:
 pnpm dev
 ```
 
-The app will be available at `http://localhost:5173`.
+The app will be available at `http://localhost:8888` (configured for Netlify compatibility).
+
+For Netlify development:
+```bash
+pnpm dev:netlify
+```
 
 ### Production Build
 
@@ -80,23 +87,55 @@ The app uses TailwindCSS with Bitcoin Builder Kit design tokens. You can customi
 2. Select the Payments product
 3. Create an environment (call it "staging" or "production")
 4. Create a wallet (mutinynet for testing, mainnet for production)
-5. Get your API credentials from the developer panel
-6. Create an API key for your environment
+5. Go to the wallet and click on the developer toggle at the top of the screen to show developer info
+6. Copy and paste the Organization ID, Environment ID, and Wallet ID into your `.env` file
+7. Click on the account dropdown and go to API Keys
+8. Create an API key for your staging environment, copy it, and paste it into `.env`
+9. Make a 2nd wallet in Voltage (also mutinynet) which you can use to test paying to the first wallet
+
+### Environment Variables
+
+Create a `.env` file with your real Voltage API credentials:
+
+```bash
+VITE_VOLTAGE_API_KEY=your_real_api_key_here
+VITE_VOLTAGE_ORG_ID=your_org_id_here
+VITE_VOLTAGE_ENV_ID=your_env_id_here
+VITE_VOLTAGE_WALLET_ID=your_wallet_id_here
+VITE_TIP_JAR_NAME="Your Improv Group Name"
+VITE_TIP_JAR_SLOGAN="Your group slogan"
+```
+
+**Important**: Replace the example values with your actual Voltage API credentials. The app will not work with mock data.
 
 ## Testing
 
-For testing purposes, the app uses mock payment data. To test with real payments:
+To test with real payments:
 
-1. Set up your Voltage API credentials
+1. Set up your Voltage API credentials in `.env`
 2. Use a mutinynet wallet for testing
 3. Test payments with the Mutinynet faucet or compatible wallets
+4. The app will automatically check payment status every 3 seconds
+5. Once payment is received, the UI will show a success state
 
 ## Deployment
 
-The app can be deployed to any static hosting service:
+### Netlify (Recommended)
 
-- **Netlify**: Connect your GitHub repository
-- **Vercel**: Import your project
+1. Connect your GitHub repository to Netlify
+2. Set build command: `pnpm build`
+3. Set publish directory: `dist`
+4. Add environment variables in Netlify dashboard:
+   - `VITE_VOLTAGE_API_KEY`
+   - `VITE_VOLTAGE_ORG_ID`
+   - `VITE_VOLTAGE_ENV_ID`
+   - `VITE_VOLTAGE_WALLET_ID`
+   - `VITE_TIP_JAR_NAME`
+   - `VITE_TIP_JAR_SLOGAN`
+
+### Other Platforms
+
+- **Vercel**: Import your project and set environment variables
 - **GitHub Pages**: Use GitHub Actions for deployment
 
 ## Support

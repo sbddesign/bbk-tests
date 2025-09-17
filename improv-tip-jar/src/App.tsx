@@ -2,9 +2,7 @@ import { useState, useEffect } from 'react'
 import {
   BuiAmountOptionTileReact as BuiAmountOptionTile,
   BuiButtonReact as BuiButton,
-  BuiInputReact as BuiInput,
-  BuiMoneyValueReact as BuiMoneyValue,
-  BuiBitcoinValueReact as BuiBitcoinValue
+  BuiInputReact as BuiInput
 } from '@sbddesign/bui-ui/react'
 import '@sbddesign/bui-ui/tokens.css'
 import { Recipient } from './components/Recipient'
@@ -179,11 +177,11 @@ function App() {
           {tipOptionsState.map((option) => (
             <BuiAmountOptionTile
               key={option.id}
-              primaryAmount={option.primaryAmount.toString()}
-              secondaryAmount={option.secondaryAmount.toString()}
+              primaryAmount={option.primaryAmount}
+              secondaryAmount={option.secondaryAmount}
               emoji={option.emoji}
               message={option.message}
-              selected={option.selected ? "true" : ""}
+              selected={option.selected}
               onClick={() => handleOptionSelect(option.id)}
             />
           ))}
@@ -195,10 +193,7 @@ function App() {
             label="Custom amount (USD)"
             placeholder="Enter amount"
             value={customAmount}
-            onChange={handleCustomAmountChange}
-            type="number"
-            step="0.01"
-            min="0.01"
+            onChange={(e) => handleCustomAmountChange((e.target as HTMLInputElement).value)}
           />
           {customAmount && parseFloat(customAmount) > 0 && (
             <div className="mt-2 text-center text-[var(--text-secondary)]">

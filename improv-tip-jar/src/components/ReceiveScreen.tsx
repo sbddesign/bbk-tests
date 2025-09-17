@@ -6,6 +6,7 @@ import {
   BuiBitcoinValueReact as BuiBitcoinValue
 } from '@sbddesign/bui-ui/react';
 import { Recipient } from './Recipient';
+import { voltageApi, VoltageApiError, type PaymentData } from '../services/voltageApi';
 
 // Import icons (you may need to adjust these based on the actual icon library)
 const CheckCircleIcon = () => (
@@ -26,10 +27,7 @@ const ArrowLeftIcon = () => (
   </svg>
 );
 
-interface PaymentData {
-  onchainAddress?: string;
-  lightningInvoice?: string;
-}
+// PaymentData interface is now imported from voltageApi service
 
 interface ReceiveScreenProps {
   amount: number;
@@ -44,27 +42,29 @@ function ReceiveScreen({ amount, bitcoinAmount, onGoBack, onCopy }: ReceiveScree
   const [error, setError] = useState<string | null>(null);
   const [isCopied, setIsCopied] = useState(false);
   const [isPaymentComplete, setIsPaymentComplete] = useState(false);
+  const [paymentHash, setPaymentHash] = useState<string | null>(null);
 
-  // Mock payment creation - in a real app, this would call the Voltage API
+  // Create payment using Voltage API
   useEffect(() => {
     const createPayment = async () => {
       try {
         setIsLoading(true);
         setError(null);
 
-        // Simulate API call delay
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        const paymentData = await voltageApi.createPayment({
+          amount: bitcoinAmount,
+          description: `Improv Comedy Tip - $${amount}`
+        });
 
-        // Mock payment data - in production, this would come from Voltage API
-        const mockPaymentData: PaymentData = {
-          onchainAddress: 'bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh',
-          lightningInvoice: 'lnbc' + Math.random().toString(36).substring(2, 15) + '...'
-        };
-
-        setPaymentData(mockPaymentData);
+        setPaymentData(paymentData);
+        if (paymentData.paymentHash) {
+          setPaymentHash(paymentData.paymentHash);
+        }
       } catch (err) {
         console.error('Payment creation error:', err);
-        if (err instanceof Error) {
+        if (err instanceof VoltageApiError) {
+          setError(`Payment creation failed: ${err.message}`);
+        } else if (err instanceof Error) {
           setError(`Payment creation failed: ${err.message}`);
         } else {
           setError('Failed to create payment. Please try again.');
@@ -75,7 +75,26 @@ function ReceiveScreen({ amount, bitcoinAmount, onGoBack, onCopy }: ReceiveScree
     };
 
     createPayment();
-  }, [amount]);
+  }, [amount, bitcoinAmount]);
+
+  // Check payment status periodically
+  useEffect(() => {
+    if (!paymentHash || isPaymentComplete) return;
+
+    const checkPaymentStatus = async () => {
+      try {
+        const status = await voltageApi.checkPaymentStatus(paymentHash);
+        if (status.paid) {
+          setIsPaymentComplete(true);
+        }
+      } catch (error) {
+        console.error('Error checking payment status:', error);
+      }
+    };
+
+    const interval = setInterval(checkPaymentStatus, 3000); // Check every 3 seconds
+    return () => clearInterval(interval);
+  }, [paymentHash, isPaymentComplete]);
 
   const handleCopy = async () => {
     try {
