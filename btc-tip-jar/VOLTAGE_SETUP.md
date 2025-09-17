@@ -79,8 +79,19 @@ To test that payments work:
 ## 🔒 Security Notes
 
 - Never commit your `.env` file to git (it's already in `.gitignore`)
+- API calls are made through Netlify serverless functions to avoid CORS issues
+- Your API keys are securely handled server-side, not exposed to the browser
 - For production, create a **mainnet** wallet instead of mutinynet
 - Keep your API keys secure and rotate them regularly
+
+## 🛠️ Technical Architecture
+
+This tip jar uses **Netlify serverless functions** to securely communicate with the Voltage API:
+
+- `/.netlify/functions/create-invoice` - Creates Lightning invoices
+- `/.netlify/functions/check-invoice` - Checks payment status
+- Frontend makes requests to these functions, not directly to Voltage API
+- This solves CORS issues and keeps API keys secure
 
 ## 🎭 Customization
 

@@ -50,37 +50,25 @@ export default function ReceiveScreen({
       setError(null);
 
       try {
-        // Check if all required Voltage environment variables are present
-        const apiKey = import.meta.env.VITE_VOLTAGE_API_KEY;
-        const orgId = import.meta.env.VITE_VOLTAGE_ORG_ID;
-        const envId = import.meta.env.VITE_VOLTAGE_ENV_ID;
-        const walletId = import.meta.env.VITE_VOLTAGE_WALLET_ID;
-
-        if (!apiKey || !orgId || !envId || !walletId) {
-          throw new VoltageApiError('Missing Voltage API configuration. Please check your environment variables.');
-        }
-
         // Convert USD amount to satoshis
         const amountSats = bitcoinAmount;
 
-        // Create Lightning invoice via Voltage API
-        const response = await fetch(`https://api.voltage.cloud/v1/orgs/${orgId}/envs/${envId}/wallets/${walletId}/invoices`, {
+        // Create Lightning invoice via Netlify serverless function
+        const response = await fetch('/.netlify/functions/create-invoice', {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${apiKey}`,
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
             amount_sats: amountSats,
             memo: `Tip for Improv Troupe - $${amount}`,
-            expiry: 3600 // 1 hour expiry
           }),
         });
 
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}));
           throw new VoltageApiError(
-            errorData.message || `API request failed with status ${response.status}`
+            errorData.error || `API request failed with status ${response.status}`
           );
         }
 
@@ -98,15 +86,11 @@ export default function ReceiveScreen({
         // Start polling for payment status
         const pollPaymentStatus = async () => {
           try {
-            const statusResponse = await fetch(`https://api.voltage.cloud/v1/orgs/${orgId}/envs/${envId}/wallets/${walletId}/invoices/${invoiceData.r_hash}`, {
-              headers: {
-                'Authorization': `Bearer ${apiKey}`,
-              },
-            });
+            const statusResponse = await fetch(`/.netlify/functions/check-invoice?r_hash=${invoiceData.r_hash}`);
 
             if (statusResponse.ok) {
               const statusData = await statusResponse.json();
-              if (statusData.state === 'SETTLED') {
+              if (statusData.settled) {
                 setIsPaymentComplete(true);
                 return true;
               }
